@@ -1,0 +1,44 @@
+name: deploy-container
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'packages/container/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/container
+    steps:
+      # See: https://docs.microsoft.com/en-us/azure/storage/blobs/storage-blobs-static-site-github-actions
+      # See: https://github.com/Azure/actions/
+      - name: Check out the code
+        uses: actions/checkout@v2
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Install nodejs modules
+        run: yarn install
+      - name: Build the application
+        run: yarn build
+        env:
+          PRODUCTION_DOMAIN: ${{ secrets.PRODUCTION_DOMAIN }}
+      - name: Upload the app to blob storage
+        uses: azure/CLI@v1
+        with:
+          azcliversion: 2.18.0
+          inlineScript: |
+            az storage blob upload-batch --account-name 'schultmfp' --destination '$web' --destination-path '/' -s 'packages/container/dist'
+      - name: Purge the pre-loaded content for the CDN endpoint
+        uses: azure/CLI@v1
+        with:
+          azcliversion: 2.18.0
+          inlineScript: |
+            az cdn endpoint purge --content-paths '/index.html' --profile-name 'schult-mfp' --name 'schultmfp' --resource-group 'work' --no-wait
+      - name: Logout from Azure
+        run: az logout
